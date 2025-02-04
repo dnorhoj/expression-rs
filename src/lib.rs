@@ -1,7 +1,9 @@
 pub use engine::Engine;
 pub use expression::Expression;
 pub use parser::ExpressionParser as Parser;
-pub use schema::{Schema, SchemaBuilder};
+pub use schema::{Schema, SchemaBuilder, SchemaTarget};
+
+pub use expression_derive::AutoSchema;
 
 pub mod engine;
 pub mod expression;

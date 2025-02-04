@@ -157,3 +157,8 @@ impl<T> Schema<T> {
         self.fields.get(field_name).cloned()
     }
 }
+
+// todo name
+pub trait SchemaTarget<T> {
+    fn build_schema() -> Schema<T>;
+}
