@@ -8,7 +8,7 @@ use syn::{DeriveInput, PathArguments, parse_macro_input};
 // Only maps types that don't have any form of arguments,
 // and angle bracketed types that have only one argument
 struct Type {
-    pub ty: String,
+    pub ty: syn::Ident,
     pub sub_ty: Option<Box<Type>>,
 }
 
@@ -47,9 +47,214 @@ impl TryFrom<&syn::Type> for Type {
         };
 
         Ok(Self {
-            ty: segment.ident.to_string(),
+            ty: segment.ident.clone(),
             sub_ty,
         })
+    }
+}
+
+fn gen_builder_field(field: &syn::Field) -> proc_macro2::TokenStream {
+    let field_ident = match &field.ident {
+        Some(ident) => ident,
+        None => panic!("Fields must have names"),
+    };
+
+    let base_type: Type = match (&field.ty).try_into() {
+        Ok(ty) => ty,
+        Err(_) => {
+            panic!("Invalid type. Only supported types are: String, f64, Vec<u8> and DateTime<Utc>")
+        }
+    };
+
+    match base_type.ty.to_string().as_str() {
+        "String" => {
+            quote! {
+                .with_string_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
+            }
+        }
+        "f64" => {
+            quote! {
+                .with_number_field(stringify!(#field_ident), |instance| Some(instance.#field_ident))
+            }
+        }
+        "bool" => {
+            quote! {
+                .with_boolean_field(stringify!(#field_ident), |instance| Some(instance.#field_ident))
+            }
+        }
+        "DateTime" => {
+            if base_type.sub_ty.as_ref().is_some_and(|sub| sub.ty == "Utc") {
+                quote! {
+                    .with_datetime_field(stringify!(#field_ident), |instance| Some(instance.#field_ident))
+                }
+            } else {
+                panic!("DateTime fields have to be DateTime<Utc>");
+            }
+        }
+        "Vec" => {
+            let vec_type = base_type.sub_ty.as_ref().unwrap();
+
+            match vec_type.ty.to_string().as_str() {
+                "u8" => {
+                    quote! {
+                        .with_raw_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
+                    }
+                }
+                "String" => {
+                    quote! {
+                        .with_string_list_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
+                    }
+                }
+                "f64" => {
+                    quote! {
+                        .with_number_list_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
+                    }
+                }
+                "bool" => {
+                    quote! {
+                        .with_boolean_list_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
+                    }
+                }
+                "DateTime" => {
+                    if vec_type.sub_ty.as_ref().is_some_and(|sub| sub.ty == "Utc") {
+                        quote! {
+                            .with_datetime_list_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
+                        }
+                    } else {
+                        panic!("DateTime fields have to be DateTime<Utc>");
+                    }
+                }
+                "Vec" => {
+                    let vec_type = vec_type.sub_ty.as_ref().unwrap();
+
+                    match vec_type.ty.to_string().as_str() {
+                        "u8" => {
+                            quote! {
+                                .with_raw_list_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
+                            }
+                        }
+                        _ => {
+                            panic!(
+                                "Invalid type. Only supported types are: String, f64, Vec<u8> and DateTime<Utc>"
+                            );
+                        }
+                    }
+                }
+                _ => {
+                    panic!(
+                        "Invalid type. Only supported types are: String, f64, Vec<u8> and DateTime<Utc>"
+                    );
+                }
+            }
+        }
+        "Option" => {
+            let option_type = base_type.sub_ty.as_ref().unwrap();
+
+            match option_type.ty.to_string().as_str() {
+                "String" => {
+                    quote! {
+                        .with_string_field(stringify!(#field_ident), |instance| instance.#field_ident.clone())
+                    }
+                }
+                "f64" => {
+                    quote! {
+                        .with_number_field(stringify!(#field_ident), |instance| instance.#field_ident)
+                    }
+                }
+                "bool" => {
+                    quote! {
+                        .with_boolean_field(stringify!(#field_ident), |instance| instance.#field_ident)
+                    }
+                }
+                "DateTime" => {
+                    if base_type.sub_ty.as_ref().is_some_and(|sub| sub.ty == "Utc") {
+                        quote! {
+                            .with_datetime_field(stringify!(#field_ident), |instance| instance.#field_ident)
+                        }
+                    } else {
+                        panic!("DateTime fields have to be DateTime<Utc>");
+                    }
+                }
+                "Vec" => {
+                    let vec_type = &option_type.sub_ty.as_ref().unwrap();
+
+                    match vec_type.ty.to_string().as_str() {
+                        "u8" => {
+                            quote! {
+                                .with_raw_field(stringify!(#field_ident), |instance| instance.#field_ident.clone())
+                            }
+                        }
+                        "String" => {
+                            quote! {
+                                .with_string_list_field(stringify!(#field_ident), |instance| instance.#field_ident.clone())
+                            }
+                        }
+                        "f64" => {
+                            quote! {
+                                .with_number_list_field(stringify!(#field_ident), |instance| instance.#field_ident.clone())
+                            }
+                        }
+                        "bool" => {
+                            quote! {
+                                .with_boolean_list_field(stringify!(#field_ident), |instance| instance.#field_ident.clone())
+                            }
+                        }
+                        "DateTime" => {
+                            if vec_type.sub_ty.as_ref().is_some_and(|sub| sub.ty == "Utc") {
+                                quote! {
+                                    .with_datetime_list_field(stringify!(#field_ident), |instance| instance.#field_ident.clone())
+                                }
+                            } else {
+                                panic!("DateTime fields have to be DateTime<Utc>");
+                            }
+                        }
+                        "Vec" => {
+                            let vec_type = vec_type.sub_ty.as_ref().unwrap();
+
+                            match vec_type.ty.to_string().as_str() {
+                                "u8" => {
+                                    quote! {
+                                        .with_raw_list_field(stringify!(#field_ident), |instance| instance.#field_ident.clone())
+                                    }
+                                }
+                                _ => {
+                                    panic!(
+                                        "Invalid type. Only supported types are: String, f64, Vec<u8> and DateTime<Utc>"
+                                    );
+                                }
+                            }
+                        }
+                        _ => {
+                            panic!(
+                                "Invalid type. Only supported types are: String, f64, Vec<u8> and DateTime<Utc>"
+                            );
+                        }
+                    }
+                }
+                _ => {
+                    let ty = &option_type.ty;
+
+                    quote! {
+                        .with_sub_field(
+                            stringify!(#field_ident),
+                            &<#ty as expression::schema::SchemaTarget<#ty>>::build_schema(),
+                            |instance| instance.#field_ident.as_ref()
+                        )
+                    }
+                }
+            }
+        }
+        _ => {
+            let ty = base_type.ty;
+
+            quote! {
+                .with_sub_field(
+                    stringify!(#field_ident),
+                    &<#ty as expression::schema::SchemaTarget<#ty>>::build_schema(),
+                    |instance| Some(&instance.#field_ident)
+                )
+            }
+        }
     }
 }
 
@@ -58,10 +263,7 @@ pub fn main(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
     let syn::Data::Struct(data) = input.data else {
-        return (quote! {
-            compile_error!("The AutoSchema derive macro can only be used with structs");
-        })
-        .into();
+        panic!("The AutoSchema derive macro can only be used with structs");
     };
 
     let struct_ident = &input.ident;
@@ -71,126 +273,12 @@ pub fn main(input: TokenStream) -> TokenStream {
     };
 
     for field in data.fields.iter() {
-        let field_ident = match &field.ident {
-            Some(ident) => ident,
-            None => panic!("Fields must have names"),
+        let builder_field = gen_builder_field(field);
+
+        builder = quote! {
+            #builder
+            #builder_field
         };
-
-        let base_type: Type = match (&field.ty).try_into() {
-            Ok(ty) => ty,
-            Err(_) => {
-                builder = quote! {
-                    compile_error!("An error happened when parsing a type - better message TODO");
-                };
-                break;
-            }
-        };
-
-        match base_type.ty.as_str() {
-            "String" => {
-                builder = quote! {
-                    #builder
-                    .with_string_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
-                };
-            }
-            "f64" => {
-                builder = quote! {
-                    #builder
-                    .with_number_field(stringify!(#field_ident), |instance| Some(instance.#field_ident))
-                };
-            }
-            "bool" => {
-                builder = quote! {
-                    #builder
-                    .with_boolean_field(stringify!(#field_ident), |instance| Some(instance.#field_ident))
-                };
-            }
-            "DateTime" => {
-                if base_type.sub_ty.as_ref().is_some_and(|sub| sub.ty == "Utc") {
-                    builder = quote! {
-                        #builder
-                        .with_datetime_field(stringify!(#field_ident), |instance| Some(instance.#field_ident))
-                    };
-                } else {
-                    builder = quote! {
-                        compile_error!("DateTime fields have to be DateTime<Utc>");
-                    };
-                    break;
-                }
-            }
-            "Vec" => {
-                let vec_type = base_type.sub_ty.as_ref().unwrap();
-
-                match vec_type.ty.as_str() {
-                    "u8" => {
-                        builder = quote! {
-                            #builder
-                            .with_raw_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
-                        };
-                    }
-                    "String" => {
-                        builder = quote! {
-                            #builder
-                            .with_string_list_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
-                        };
-                    }
-                    "f64" => {
-                        builder = quote! {
-                            #builder
-                            .with_number_list_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
-                        };
-                    }
-                    "bool" => {
-                        builder = quote! {
-                            #builder
-                            .with_boolean_list_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
-                        };
-                    }
-                    "DateTime" => {
-                        if vec_type.sub_ty.as_ref().is_some_and(|sub| sub.ty == "Utc") {
-                            builder = quote! {
-                                #builder
-                                .with_datetime_list_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
-                            };
-                        } else {
-                            builder = quote! {
-                                compile_error!("DateTime fields have to be DateTime<Utc>");
-                            };
-                            break;
-                        }
-                    }
-                    "Vec" => {
-                        let vec_type = vec_type.sub_ty.as_ref().unwrap();
-
-                        match vec_type.ty.as_str() {
-                            "u8" => {
-                                builder = quote! {
-                                    #builder
-                                    .with_raw_list_field(stringify!(#field_ident), |instance| Some(instance.#field_ident.clone()))
-                                };
-                            }
-                            _ => {
-                                builder = quote! {
-                                    compile_error!("Invalid type - better message todo 4");
-                                };
-                                break;
-                            }
-                        }
-                    }
-                    _ => {
-                        builder = quote! {
-                            compile_error!("Invalid type - better message todo 2");
-                        };
-                        break;
-                    }
-                }
-            }
-            _ => {
-                builder = quote! {
-                    compile_error!("Invalid type - better message todo 1");
-                }
-            }
-        }
     }
 
     let expanded = quote! {

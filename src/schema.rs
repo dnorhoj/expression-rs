@@ -1,4 +1,7 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::{HashMap, hash_map},
+    rc::Rc,
+};
 
 use chrono::{DateTime, Utc};
 
@@ -86,11 +89,11 @@ impl Value {
 
 pub struct Field<T> {
     pub field_type: Type,
-    pub field_extractor: Box<dyn Fn(&T) -> Value>,
+    pub field_extractor: Rc<dyn Fn(&T) -> Value>,
 }
 
 impl<T> Field<T> {
-    pub fn new(field_type: Type, field_extractor: Box<dyn Fn(&T) -> Value>) -> Self {
+    pub fn new(field_type: Type, field_extractor: Rc<dyn Fn(&T) -> Value>) -> Self {
         Self {
             field_type,
             field_extractor,
@@ -99,7 +102,7 @@ impl<T> Field<T> {
 }
 
 pub struct SchemaBuilder<T> {
-    fields: HashMap<&'static str, Rc<Field<T>>>,
+    fields: HashMap<String, Rc<Field<T>>>,
 }
 
 macro_rules! field_extractor_builder {
@@ -109,12 +112,12 @@ macro_rules! field_extractor_builder {
             field_name: &'static str,
             extractor: impl Fn(&T) -> Option<$type_> + 'static,
         ) -> Self {
-            let wrapped_extractor = Box::new(move |target: &T| {
+            let wrapped_extractor = Rc::new(move |target: &T| {
                 extractor(target).map_or_else(|| Value::Null, |val| Value::$enum_name(val))
             });
 
             self.fields.insert(
-                field_name,
+                String::from(field_name),
                 Rc::new(Field::new(Type::$enum_name, wrapped_extractor)),
             );
 
@@ -141,6 +144,36 @@ impl<T> SchemaBuilder<T> {
     field_extractor_builder!(with_raw_list_field, Vec<Vec<u8>>, RawList);
     field_extractor_builder!(with_datetime_list_field, Vec<DateTime<Utc>>, DateTimeList);
 
+    pub fn with_sub_field<U: 'static>(
+        mut self,
+        field_name: &'static str,
+        schema: &Schema<U>,
+        extractor: impl Fn(&T) -> Option<&U> + 'static,
+    ) -> Self {
+        let wrapped_extractor = Rc::new(extractor);
+
+        for (subfield_name, subfield) in schema.iter_fields() {
+            let wrapped_extractor = wrapped_extractor.clone();
+            let subfield_extractor = subfield.field_extractor.clone();
+
+            let field = Field::new(
+                subfield.field_type,
+                Rc::new(move |target| {
+                    if let Some(target) = wrapped_extractor(target) {
+                        subfield_extractor(target)
+                    } else {
+                        Value::Null
+                    }
+                }),
+            );
+
+            self.fields
+                .insert(format!("{}:{}", field_name, subfield_name), Rc::new(field));
+        }
+
+        self
+    }
+
     pub fn build(self) -> Schema<T> {
         Schema {
             fields: self.fields,
@@ -149,12 +182,16 @@ impl<T> SchemaBuilder<T> {
 }
 
 pub struct Schema<T> {
-    fields: HashMap<&'static str, Rc<Field<T>>>,
+    fields: HashMap<String, Rc<Field<T>>>,
 }
 
 impl<T> Schema<T> {
     pub fn get_field(&self, field_name: &str) -> Option<Rc<Field<T>>> {
         self.fields.get(field_name).cloned()
+    }
+
+    pub fn iter_fields(&self) -> hash_map::Iter<'_, String, Rc<Field<T>>> {
+        self.fields.iter()
     }
 }
 
