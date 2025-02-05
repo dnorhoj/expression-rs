@@ -144,7 +144,7 @@ impl<T> SchemaBuilder<T> {
     field_extractor_builder!(with_raw_list_field, Vec<Vec<u8>>, RawList);
     field_extractor_builder!(with_datetime_list_field, Vec<DateTime<Utc>>, DateTimeList);
 
-    pub fn with_sub_field<U: 'static>(
+    pub fn with_sub_schema<U: 'static>(
         mut self,
         field_name: &'static str,
         schema: &Schema<U>,

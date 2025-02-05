@@ -235,7 +235,7 @@ fn gen_builder_field(field: &syn::Field) -> proc_macro2::TokenStream {
                     let ty = &option_type.ty;
 
                     quote! {
-                        .with_sub_field(
+                        .with_sub_schema(
                             stringify!(#field_ident),
                             &<#ty as expression::schema::SchemaTarget<#ty>>::build_schema(),
                             |instance| instance.#field_ident.as_ref()
@@ -248,7 +248,7 @@ fn gen_builder_field(field: &syn::Field) -> proc_macro2::TokenStream {
             let ty = base_type.ty;
 
             quote! {
-                .with_sub_field(
+                .with_sub_schema(
                     stringify!(#field_ident),
                     &<#ty as expression::schema::SchemaTarget<#ty>>::build_schema(),
                     |instance| Some(&instance.#field_ident)
